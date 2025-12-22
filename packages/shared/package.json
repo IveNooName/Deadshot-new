@@ -1,0 +1,6 @@
+{
+  "name": "@deadshot/shared",
+  "version": "0.0.1",
+  "main": "src/types.ts",
+  "types": "src/types.ts"
+}
