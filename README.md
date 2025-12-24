@@ -78,3 +78,8 @@ Do not deviate from this order. Frontend visuals mean nothing if the backend loo
 
 ---
 Powered by [Gemini Exporter](https://www.ai-chat-exporter.com)
+
+
+```bash 
+npm run dev:server
+```

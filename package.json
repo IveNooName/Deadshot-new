@@ -1,0 +1,12 @@
+{
+  "name": "deadshot-ultima-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace=@deadshot/server",
+    "dev:client": "npm run dev --workspace=@deadshot/client"
+  }
+}
