@@ -1,5 +1,7 @@
-import { Server } from 'socket.io';
-import { WorldState, PlayerState } from '@deadshot/shared/src/types';
+import { Server, Socket } from 'socket.io';
+import { WorldState, Inputs } from '@deadshot/shared/src/types';
+import { PhysicsWorld } from './PhysicsWorld';
+import { Player } from '../entities/Player';
 
 const TICK_RATE = 60;
 const TICK_TIME = 1000 / TICK_RATE;
@@ -9,13 +11,17 @@ export class GameLoop {
   private io: Server;
   private interval: NodeJS.Timeout | null = null;
   
-  // Game State
-  private tick: number = 0;
-  private players: Record<string, PlayerState> = {};
+  // Sub-systems
+  private physics: PhysicsWorld;
+  private players: Map<string, Player> = new Map();
+  
+  // State
+  private tickCount: number = 0;
   
   constructor(roomId: string, io: Server) {
     this.roomId = roomId;
     this.io = io;
+    this.physics = new PhysicsWorld();
   }
 
   public start() {
@@ -31,44 +37,61 @@ export class GameLoop {
     if (this.interval) clearInterval(this.interval);
   }
 
-  public addPlayer(id: string) {
-    // Basic init state
-    this.players[id] = {
-      id,
-      pos: [0, 5, 0],
-      rot: [0, 0, 0, 1],
-      vel: [0, 0, 0],
-      hp: 100,
-      state: 'IDLE',
-      weaponIdx: 0
-    };
+  public addPlayer(socketId: string) {
+    const player = new Player(socketId, this.physics.world);
+    this.players.set(socketId, player);
     
-    // Notify client of their own join
-    // Note: We emit to the specific socket in the room
-    this.io.to(this.roomId).emit('joined', this.players[id]);
+    // Tell everyone a new player exists
+    this.io.to(this.roomId).emit('joined', player.getSnapshot());
+
+    // Listen for inputs specifically from this player
+    const socket = this.io.sockets.sockets.get(socketId);
+    if (socket) {
+        socket.on('input', (data: Inputs) => {
+            if (this.players.has(socketId)) {
+                this.players.get(socketId)!.processInput(data);
+            }
+        });
+    }
   }
 
   public removePlayer(id: string) {
-    delete this.players[id];
-    this.io.to(this.roomId).emit('left', id);
+    const player = this.players.get(id);
+    if (player) {
+      player.destroy(this.physics.world);
+      this.players.delete(id);
+      this.io.to(this.roomId).emit('left', id);
+    }
   }
 
   private update() {
-    this.tick++;
+    this.tickCount++;
 
-    // 1. Process Input Queues (To be implemented in Phase 3)
+    // 1. Step Physics
+    // We advance the physics world by the delta time
+    this.physics.step(TICK_TIME / 1000);
+
+    // 2. Prepare Network Snapshot
+    const serializedPlayers: Record<string, any> = {};
     
-    // 2. Run Physics Step (To be implemented in Phase 3)
+    this.players.forEach((player) => {
+      // Check if player fell off map
+      if (player.body.position.y < -10) {
+        player.body.position.set(0, 5, 0); // Respawn
+        player.body.velocity.set(0,0,0);
+      }
+      serializedPlayers[player.id] = player.getSnapshot();
+    });
 
-    // 3. Broadcast State
-    // We don't send the full state every tick in production (too much bandwidth),
-    // but for Phase 2/3 dev, we will to ensure sync.
     const worldState: WorldState = {
-      tick: this.tick,
-      players: this.players,
-      events: [] // Snapshot events
+      tick: this.tickCount,
+      players: serializedPlayers,
+      events: []
     };
 
-    this.io.to(this.roomId).emit('tick', worldState);
+    // 3. Broadcast to Room
+    // Volatile means "if the client misses this packet, don't retry".
+    // This reduces latency for real-time movement.
+    this.io.to(this.roomId).volatile.emit('tick', worldState);
   }
 }

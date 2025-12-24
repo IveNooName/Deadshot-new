@@ -6,11 +6,12 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@deadshot/shared": "*",
+    "cannon-es": "^0.20.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "socket.io": "^4.7.2",
-    "uuid": "^9.0.1",
-    "@deadshot/shared": "*"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
